@@ -19,6 +19,8 @@ const config = {
 
 firebase.initializeApp(config);
 
+const db=admin.firestore();
+
 // // Create and Deploy Your First Cloud Functions
 // // https://firebase.google.com/docs/functions/write-firebase-functions
 //
@@ -28,7 +30,7 @@ firebase.initializeApp(config);
 
 app.get('/screams',(req,res)=>{
     let screams=[];
-   admin.firestore().collection('scream').orderBy('createdAt', 'desc').get()
+   db.collection('scream').orderBy('createdAt', 'desc').get()
     .then(data=>{
             data.forEach(doc=>{
                 screams.push({
@@ -55,7 +57,7 @@ app.post('/scream',(req,res)=>{
         createdAt: new Date().toISOString()
         // createdAt:admin.firestore.Timestamp.fromDate(new Date())
     }
-    admin.firestore().collection('scream').add(newScream)
+    db.collection('scream').add(newScream)
     .then(doc=>{
         res.json({message:`Document ${doc.id} added successfully`})
     })
@@ -63,6 +65,53 @@ app.post('/scream',(req,res)=>{
         res.status(500).json({error:"something went wrong"});
         console.log(err);
     })
+})
+
+
+//Signup Path
+
+app.post('/signup',(req,res)=>{
+    const newUser={
+        email:req.body.email,
+        password:req.body.password,
+        confirmPassword:req.body.confirmPassword,
+        handle:req.body.handle
+    }
+    //validate data
+    let token,userId;
+    db.doc((`/users/${newUser.handle}`)).get()
+        .then(doc=>{
+            if(doc.exists){
+                return res.status(400).json({handle:'This handle already taken'});
+            }
+            else{
+                return firebase.auth().createUserWithEmailAndPassword(newUser.email,newUser.password);
+            }
+        })
+        .then(data=>{
+            userId=data.user.uid;
+            return data.user.getIdToken();
+        })
+        .then(idToken=>{
+            token=idToken;
+            const userCredentials={
+                handle:newUser.handle,
+                email:newUser.email,
+                createdAt:new Date().toISOString(),
+                userId
+            }
+            return db.doc(`/users/${newUser.handle}`).set(userCredentials);
+        })
+        .then(()=>{
+            return res.status(201).json({token});
+        })
+        .catch(err=>{
+                console.log(err);
+                if(err.code==='auth/email-already-in-use')
+                    return res.status(400).json({email:'Email is already in use'})
+                return res.status(500).json({error:err.code});
+        })
+
 })
 
 //https://baseurl.api
