@@ -7,6 +7,8 @@ admin.initializeApp();
 const express=require('express');
 const app=express();
 
+const Joi = require('@hapi/joi');
+
 const config = {
     apiKey: "AIzaSyBnsT7dSkYVCzOQofTE7EJDbM3zqZ1i0kU",
     authDomain: "social-api-3bbea.firebaseapp.com",
@@ -77,6 +79,16 @@ app.post('/signup',(req,res)=>{
         confirmPassword:req.body.confirmPassword,
         handle:req.body.handle
     }
+    const schema = Joi.object().keys({
+        email: Joi.string().email({ minDomainSegments: 2 }).required(),
+        password: Joi.string().required(),
+        confirmPassword:Joi.string().required(),
+        handle:Joi.string().required()
+
+    })
+    const result = Joi.validate(newUser, schema);
+    if(result.error)
+            return res.status(400).json({error:result.error.details[0].message});
     //validate data
     let token,userId;
     db.doc((`/users/${newUser.handle}`)).get()
