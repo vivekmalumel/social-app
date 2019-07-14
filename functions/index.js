@@ -86,9 +86,15 @@ app.post('/signup',(req,res)=>{
         handle:Joi.string().required()
 
     })
-    const result = Joi.validate(newUser, schema);
-    if(result.error)
-            return res.status(400).json({error:result.error.details[0].message});
+    const result = Joi.validate(newUser, schema,{abortEarly: false}); //{abortEarly: false} to display all errors
+    if(result.error){
+        let errors={}
+        result.error.details.forEach((err)=>{
+            errors[err.context.label]=err.message;
+        })
+        return res.status(400).json(errors);
+    }
+            //return res.status(400).json({error:result.error}); //when only single error need to display
     //validate data
     let token,userId;
     db.doc((`/users/${newUser.handle}`)).get()
@@ -124,6 +130,42 @@ app.post('/signup',(req,res)=>{
                 return res.status(500).json({error:err.code});
         })
 
+})
+
+app.post('/login',(req,res)=>{
+    const user={
+        email:req.body.email,
+        password:req.body.password
+    }
+
+    const schema=Joi.object().keys({
+        email:Joi.string().email({ minDomainSegments: 2 }).required(),
+        password:Joi.string().required()
+    })
+
+    const result = Joi.validate(user, schema,{abortEarly: false}); //{abortEarly: false} to display all errors
+    if(result.error){
+        let errors={}
+        result.error.details.forEach((err)=>{
+            errors[err.context.label]=err.message;
+        })
+        return res.status(400).json(errors);
+    }
+
+    firebase.auth().signInWithEmailAndPassword(user.email,user.password)
+    .then(data=>{
+        return data.user.getIdToken();
+    })
+    .then(token=>{
+        return res.status(200).json({token});
+    })
+    .catch(err=>{
+        console.log(err);
+        if(err.code==="auth/user-not-found"|| err.code==="auth/wrong-password")
+            return res.status(403).json({error:"Invalid Email or Password"})
+        else 
+            return res.status(500).json({error:err.code});
+    })
 })
 
 //https://baseurl.api
