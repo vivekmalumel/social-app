@@ -2,7 +2,7 @@ const functions = require('firebase-functions');
 const express=require('express');
 const app=express();
 const {getAllScreams,postOneScream}=require('./handlers/screams');
-const {signup,login}=require('./handlers/users');
+const {signup,login,uploadImage}=require('./handlers/users');
 const fbAuth=require('./util/fbAuth');
 
 
@@ -25,6 +25,7 @@ app.post('/scream',fbAuth,postOneScream);
 //Users Routes
 app.post('/signup',signup);
 app.post('/login',login);
+app.post('/user/image',fbAuth,uploadImage);
 
 //https://baseurl.api
 
