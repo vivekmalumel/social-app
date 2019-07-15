@@ -1,27 +1,15 @@
 const functions = require('firebase-functions');
-const admin=require('firebase-admin')
-const firebase=require('firebase')
-
-admin.initializeApp();
-
 const express=require('express');
 const app=express();
+const {getAllScreams,postOneScream}=require('./handlers/screams');
+const {signup,login}=require('./handlers/users');
+const fbAuth=require('./util/fbAuth');
 
-const Joi = require('@hapi/joi');
 
-const config = {
-    apiKey: "AIzaSyBnsT7dSkYVCzOQofTE7EJDbM3zqZ1i0kU",
-    authDomain: "social-api-3bbea.firebaseapp.com",
-    databaseURL: "https://social-api-3bbea.firebaseio.com",
-    projectId: "social-api-3bbea",
-    storageBucket: "social-api-3bbea.appspot.com",
-    messagingSenderId: "600533108533",
-    appId: "1:600533108533:web:a60a209ac3df07b2"
-  };
 
-firebase.initializeApp(config);
 
-const db=admin.firestore();
+
+//firebase.initializeApp(config);
 
 // // Create and Deploy Your First Cloud Functions
 // // https://firebase.google.com/docs/functions/write-firebase-functions
@@ -30,175 +18,13 @@ const db=admin.firestore();
 //  response.send("Hello from Firebase!");
 // });
 
-app.get('/screams',(req,res)=>{
-    let screams=[];
-   db.collection('scream').orderBy('createdAt', 'desc').get()
-    .then(data=>{
-            data.forEach(doc=>{
-                screams.push({
-                    screamId:doc.id,
-                    body:doc.data().body,
-                    userHandle:doc.data().userHandle,
-                    createdAt:doc.data().createdAt
-                });
-            })
-           return res.json(screams);
-    })
-    .catch(err=>{
-        res.status(500).json({error:"something went wrong"});
-        console.error(err);
-    })
-})
+//scream Routes
+app.get('/screams',getAllScreams);
+app.post('/scream',fbAuth,postOneScream);
 
-//Autherization Middleware
-
-const FBAuth=(req,res,next)=>{
-    let idToken;
-    if(req.headers.authorization && req.headers.authorization.startsWith('Bearer ')){
-        idToken=req.headers.authorization.split('Bearer ')[1];
-        console.log(idToken);
-
-    }else{
-        console.error('No token found!');
-        return res.status(403).json({error:'Unauthorized'});
-    }
-
-    admin.auth().verifyIdToken(idToken)
-    .then(decodedToken=>{
-        req.user=decodedToken;
-        //console.log('Decoded Token',decodedToken);
-        return db.collection('users').
-        where('userId','==', req.user.uid)
-        .limit(1)
-        .get();
-    })
-    .then(data=>{
-        req.user.handle=data.docs[0].data().handle;
-        return next();
-    })
-    .catch(err=>{
-        console.error('Error verifying Token',err);
-        return res.status(403).json(err);
-    })
-}
-
-app.post('/scream',FBAuth,(req,res)=>{
-    // if(req.method!=='POST')
-    //     return res.status(400).json({error:"Method Not Allowed"});
-    let newScream={
-        body:req.body.body,
-        userHandle:req.user.handle, //req.body.userHandle
-        createdAt: new Date().toISOString()
-        // createdAt:admin.firestore.Timestamp.fromDate(new Date())
-    }
-    db.collection('scream').add(newScream)
-    .then(doc=>{
-        res.json({message:`Document ${doc.id} added successfully`})
-    })
-    .catch(err=>{
-        res.status(500).json({error:"something went wrong"});
-        console.log(err);
-    })
-})
-
-
-//Signup Path
-
-app.post('/signup',(req,res)=>{
-    const newUser={
-        email:req.body.email,
-        password:req.body.password,
-        confirmPassword:req.body.confirmPassword,
-        handle:req.body.handle
-    }
-    const schema = Joi.object().keys({
-        email: Joi.string().email({ minDomainSegments: 2 }).required(),
-        password: Joi.string().required(),
-        confirmPassword:Joi.string().required(),
-        handle:Joi.string().required()
-
-    })
-    const result = Joi.validate(newUser, schema,{abortEarly: false}); //{abortEarly: false} to display all errors
-    if(result.error){
-        let errors={}
-        result.error.details.forEach((err)=>{
-            errors[err.context.label]=err.message;
-        })
-        return res.status(400).json(errors);
-    }
-            //return res.status(400).json({error:result.error}); //when only single error need to display
-    //validate data
-    let token,userId;
-    db.doc((`/users/${newUser.handle}`)).get()
-        .then(doc=>{
-            if(doc.exists){
-                return res.status(400).json({handle:'This handle already taken'});
-            }
-            else{
-                return firebase.auth().createUserWithEmailAndPassword(newUser.email,newUser.password);
-            }
-        })
-        .then(data=>{
-            userId=data.user.uid;
-            return data.user.getIdToken();
-        })
-        .then(idToken=>{
-            token=idToken;
-            const userCredentials={
-                handle:newUser.handle,
-                email:newUser.email,
-                createdAt:new Date().toISOString(),
-                userId
-            }
-            return db.doc(`/users/${newUser.handle}`).set(userCredentials);
-        })
-        .then(()=>{
-            return res.status(201).json({token});
-        })
-        .catch(err=>{
-                console.log(err);
-                if(err.code==='auth/email-already-in-use')
-                    return res.status(400).json({email:'Email is already in use'})
-                return res.status(500).json({error:err.code});
-        })
-
-})
-
-app.post('/login',(req,res)=>{
-    const user={
-        email:req.body.email,
-        password:req.body.password
-    }
-
-    const schema=Joi.object().keys({
-        email:Joi.string().email({ minDomainSegments: 2 }).required(),
-        password:Joi.string().required()
-    })
-
-    const result = Joi.validate(user, schema,{abortEarly: false}); //{abortEarly: false} to display all errors
-    if(result.error){
-        let errors={}
-        result.error.details.forEach((err)=>{
-            errors[err.context.label]=err.message;
-        })
-        return res.status(400).json(errors);
-    }
-
-    firebase.auth().signInWithEmailAndPassword(user.email,user.password)
-    .then(data=>{
-        return data.user.getIdToken();
-    })
-    .then(token=>{
-        return res.status(200).json({token});
-    })
-    .catch(err=>{
-        console.log(err);
-        if(err.code==="auth/user-not-found"|| err.code==="auth/wrong-password")
-            return res.status(403).json({error:"Invalid Email or Password"})
-        else 
-            return res.status(500).json({error:err.code});
-    })
-})
+//Users Routes
+app.post('/signup',signup);
+app.post('/login',login);
 
 //https://baseurl.api
 
